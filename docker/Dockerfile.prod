@@ -1,0 +1,66 @@
+# Production image (Phase 10). The dev Dockerfile (docker/Dockerfile)
+# stays as-is for local docker-compose use — this is a separate,
+# hardened build for actual deployment: multi-stage (smaller final
+# image, build tools don't ship in the runtime layer), runs as a
+# non-root user, and includes Alembic migrations so `alembic upgrade
+# head` can run against the container's own code version.
+
+# --- Stage 1: build dependencies ---
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY requirements.txt .
+# --user installs to a location we can copy wholesale into the final
+# stage, without carrying build-essential's ~200MB into the runtime image.
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# --- Stage 2: runtime ---
+FROM python:3.11-slim AS runtime
+
+# ffmpeg is required by pydub/librosa for audio decoding (Phase 2) —
+# needed at runtime, unlike build-essential which was only needed to
+# compile some dependencies' native extensions in the builder stage.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
+
+WORKDIR /app
+
+# Copy the packages pip --user installed in the builder stage.
+COPY --from=builder /root/.local /home/appuser/.local
+
+COPY app ./app
+COPY migrations ./migrations
+COPY alembic.ini ./alembic.ini
+
+RUN chown -R appuser:appuser /app
+USER appuser
+
+ENV PATH=/home/appuser/.local/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+EXPOSE 8000
+
+# Matches the same liveness check app/main.py's /health endpoint
+# provides — used by whichever platform you deploy to (most support
+# Docker HEALTHCHECK directly; some, like Render, use their own
+# separate health check config pointed at the same /health path).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Single worker by default — this app's heavy lifting (Groq/ElevenLabs/
+# DB calls) is I/O-bound and handled via FastAPI's async event loop and
+# BackgroundTasks (Phase 10), not CPU parallelism, so extra workers
+# mainly help under genuinely high concurrent request volume. Override
+# via the WEB_CONCURRENCY env var on platforms that support it, or edit
+# this CMD directly (e.g. `--workers 4`) if you deploy somewhere with
+# multiple CPU cores and expect meaningful concurrent traffic.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

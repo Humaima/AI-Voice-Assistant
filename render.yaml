@@ -1,0 +1,66 @@
+# Render Blueprint (Phase 10) — deploys this project's web service and
+# Postgres database in one step via Render's "New > Blueprint" flow.
+#
+# NOT included here, and why:
+# - Redis: configured in settings.py but never actually used anywhere
+#   in this codebase (a leftover from early project scaffolding) — no
+#   reason to pay for a managed service nothing reads from.
+# - ChromaDB: Render Blueprints don't have a clean built-in way to
+#   express "deploy this public Docker image as a private service" the
+#   way docker-compose.yml does locally. Deploy it as a separate
+#   Private Service manually in the Render dashboard (Docker Image:
+#   chromadb/chroma:0.5.11) — see the README's Phase 10 walkthrough for
+#   exact steps. Private services aren't internet-reachable, matching
+#   how ChromaDB should be treated (same as this docker-compose.yml
+#   setup keeps it off any host port mapping beyond your own machine).
+#
+# After the Blueprint deploys, you still need to set the remaining
+# secrets (GROQ_API_KEY, ELEVENLABS_API_KEY, TWILIO_*, CHROMA_HOST once
+# you know its private service URL, etc.) in the Render dashboard —
+# Blueprints deliberately don't commit real secrets to your repo.
+
+services:
+  - type: web
+    name: voice-ai-assistant
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile.prod
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: voice-ai-assistant-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: voice-ai-assistant-db
+          property: password
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: voice-ai-assistant-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: voice-ai-assistant-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: voice-ai-assistant-db
+          property: database
+      # Everything below has no safe default — set these manually in
+      # the Render dashboard after the first deploy (Blueprints won't
+      # commit real secrets to your repo, which is the point):
+      # GROQ_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID,
+      # TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_NUMBER,
+      # PUBLIC_BASE_URL (your Render URL, known only after first
+      # deploy), CHROMA_HOST/CHROMA_PORT (your ChromaDB private
+      # service's internal address), MEDIA_STORAGE_BACKEND=s3 plus
+      # S3_*/AWS_* if using S3, DEBUG_API_TOKEN.
+
+databases:
+  - name: voice-ai-assistant-db
+    databaseName: voiceai_db
+    user: voiceai
+    plan: free

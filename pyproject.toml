@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+# Ensures the project root (where the `app` package lives) is always on
+# sys.path when running tests — fixes "ModuleNotFoundError: No module
+# named 'app'" that can happen on some platforms/pytest versions when
+# invoking `pytest` directly instead of `python -m pytest`.
+pythonpath = ["."]
+testpaths = ["tests"]
+# Phase 5 introduces async graph nodes and an async AgentService.run —
+# "auto" mode lets `async def test_...` functions run directly without
+# needing @pytest.mark.asyncio on every single one.
+asyncio_mode = "auto"

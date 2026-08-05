@@ -1,0 +1,81 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    env_file: .env
+    environment:
+      # Override .env's host-facing defaults (localhost:...) with the
+      # docker-compose network's service hostnames — these only apply
+      # when the app itself runs inside this compose stack. Running
+      # the app locally via `uvicorn` instead still uses .env as-is.
+      # POSTGRES_HOST (not DATABASE_URL) is overridden here because
+      # app/core/config.py now derives DATABASE_URL from the
+      # POSTGRES_* components automatically — setting DATABASE_URL
+      # directly here would just get silently recomputed away.
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      chromadb:
+        condition: service_started
+    volumes:
+      - ./app:/app/app   # live-reload friendly bind mount during dev
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-voiceai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voiceai_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-voiceai_db}
+    ports:
+      # POSTGRES_HOST_PORT lets you remap the port exposed to your
+      # machine (left side) without touching the container-internal
+      # port (right side, always 5432 — used for app<->postgres
+      # traffic inside the docker-compose network regardless of this
+      # setting). Defaults to 5433, not Postgres's usual 5432, since a
+      # natively-installed Postgres service already bound to 5432 on
+      # the host (common on Windows) would otherwise silently
+      # intercept connections meant for this container. If POSTGRES_
+      # HOST_PORT is set in .env, keep POSTGRES_PORT there matching it
+      # too — POSTGRES_PORT is what the Python app connects to from
+      # the host.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # -d is required here: pg_isready defaults to using the -U value
+      # as the database name too when -d is omitted, and our database
+      # is named voiceai_db, not voiceai — omitting -d produces a
+      # harmless-but-alarming "FATAL: database voiceai does not exist"
+      # log line on every healthcheck tick (every 5s).
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-voiceai} -d ${POSTGRES_DB:-voiceai_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  chromadb:
+    image: chromadb/chroma:0.5.11
+    ports:
+      - "8001:8000"   # host 8001 -> container 8000, avoids clashing with the app
+    volumes:
+      - chroma_data:/chroma/chroma
+
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:

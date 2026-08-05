@@ -1,0 +1,50 @@
+# --- Web framework ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.12
+websockets==15.0.1
+
+# --- Settings & env ---
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-dotenv==1.0.1
+
+# --- LangGraph / LangChain / Groq ---
+langgraph==1.2.9
+langchain==1.3.14
+langchain-groq==1.1.3
+langchain-core==1.5.0
+groq==0.37.1
+
+# --- Memory / vector store ---
+chromadb==0.5.11
+sentence-transformers==3.1.1
+
+# --- Database ---
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
+alembic==1.13.3
+redis==5.0.8
+
+# --- Audio processing ---
+pydub==0.25.1
+librosa==0.10.2
+soundfile==0.12.1
+numpy==1.26.4
+
+# --- Text-to-Speech ---
+elevenlabs==1.9.0
+
+# --- WhatsApp integration ---
+twilio==9.3.2
+boto3==1.43.64
+httpx==0.27.2
+
+# --- Observability ---
+langsmith==0.10.9
+prometheus-client==0.21.0
+
+# --- Testing ---
+pytest==8.3.3
+pytest-asyncio==0.24.0
+aiosqlite==0.22.1
