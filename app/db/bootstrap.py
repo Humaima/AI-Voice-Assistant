@@ -1,20 +1,23 @@
 """
-One-time setup: creates the `messages` table used by
-PostgresConversationStore (Phase 5).
+Quick-start setup for local development: creates the `messages` table
+used by PostgresConversationStore (Phase 5), via SQLAlchemy's
+create_all (CREATE TABLE IF NOT EXISTS semantics — safe to run more
+than once, but doesn't track schema changes over time).
+
+    python -m app.db.bootstrap
+
+Phase 10 added real Alembic migrations (migrations/ directory) — use
+`alembic upgrade head` instead of this script for anything beyond
+local quick-start: production deployments, or once you've made schema
+changes and need them versioned/tracked. This script remains here
+purely for the fast "just get a working dev database" path Phases 5-9
+were built and tested against — it isn't being deprecated, just isn't
+the recommended path for anything beyond local dev anymore.
 
 Deliberately NOT run automatically on app startup — Phases 2-4 work
 fine with zero database configured, and eagerly connecting to Postgres
 in the FastAPI lifespan would break that for anyone not yet using
-persistent memory. Run this explicitly once before your first call to
-an endpoint that uses conversation memory:
-
-    python -m app.db.bootstrap
-
-Uses CREATE TABLE IF NOT EXISTS semantics (via SQLAlchemy's
-create_all), so it's safe to run more than once. For an evolving
-production schema, replace this with real Alembic migrations
-(Phase 10) — this script is a fast path to a working dev database now,
-not a migration system.
+persistent memory.
 """
 import asyncio
 

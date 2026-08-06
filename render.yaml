@@ -5,19 +5,20 @@
 # - Redis: configured in settings.py but never actually used anywhere
 #   in this codebase (a leftover from early project scaffolding) — no
 #   reason to pay for a managed service nothing reads from.
-# - ChromaDB: Render Blueprints don't have a clean built-in way to
-#   express "deploy this public Docker image as a private service" the
-#   way docker-compose.yml does locally. Deploy it as a separate
-#   Private Service manually in the Render dashboard (Docker Image:
-#   chromadb/chroma:0.5.11) — see the README's Phase 10 walkthrough for
-#   exact steps. Private services aren't internet-reachable, matching
-#   how ChromaDB should be treated (same as this docker-compose.yml
-#   setup keeps it off any host port mapping beyond your own machine).
+# - ChromaDB: Render's free tier covers Web Services + free Postgres,
+#   but a custom Docker image as a Private Service (what ChromaDB
+#   needs) requires a paid plan. This Blueprint sets
+#   ENABLE_SEMANTIC_MEMORY=false, so the app runs on Postgres-based
+#   short-term memory alone — no ChromaDB service needed at all. If
+#   you're on a paid Render plan and want full semantic recall, deploy
+#   ChromaDB as a Private Service (Docker Image:
+#   chromadb/chroma:0.5.11) and set ENABLE_SEMANTIC_MEMORY=true plus
+#   CHROMA_HOST/CHROMA_PORT to that service's internal address instead.
 #
 # After the Blueprint deploys, you still need to set the remaining
-# secrets (GROQ_API_KEY, ELEVENLABS_API_KEY, TWILIO_*, CHROMA_HOST once
-# you know its private service URL, etc.) in the Render dashboard —
-# Blueprints deliberately don't commit real secrets to your repo.
+# secrets (GROQ_API_KEY, ELEVENLABS_API_KEY, TWILIO_*, etc.) in the
+# Render dashboard — Blueprints deliberately don't commit real secrets
+# to your repo.
 
 services:
   - type: web
@@ -29,6 +30,8 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: ENABLE_SEMANTIC_MEMORY
+        value: "false"
       - key: POSTGRES_USER
         fromDatabase:
           name: voice-ai-assistant-db
@@ -55,9 +58,12 @@ services:
       # GROQ_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID,
       # TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_NUMBER,
       # PUBLIC_BASE_URL (your Render URL, known only after first
-      # deploy), CHROMA_HOST/CHROMA_PORT (your ChromaDB private
-      # service's internal address), MEDIA_STORAGE_BACKEND=s3 plus
-      # S3_*/AWS_* if using S3, DEBUG_API_TOKEN.
+      # deploy), DEBUG_API_TOKEN, and media storage:
+      # MEDIA_STORAGE_BACKEND=s3, S3_BUCKET_NAME, S3_REGION,
+      # S3_ENDPOINT_URL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY —
+      # recommended free provider: Backblaze B2 (genuinely no credit
+      # card required to sign up; see README's Phase 10 walkthrough,
+      # Part 1, for exact setup steps).
 
 databases:
   - name: voice-ai-assistant-db

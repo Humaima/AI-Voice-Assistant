@@ -627,11 +627,20 @@ curl http://localhost:8000/health
 
 ### Step-by-step deployment walkthrough (Render)
 
-Render was chosen for this walkthrough because it has native managed Postgres, straightforward Docker-based web services, and a generous free tier — a reasonable fit for a personal/learning project like this one. The same general shape (Docker image + managed Postgres + a way to run ChromaDB) applies to Railway, Fly.io, or any container platform if you'd rather use one of those instead.
+Render was chosen for this walkthrough because it has native managed Postgres, straightforward Docker-based web services, and covers Web Services + free Postgres **with no credit card required at all**. This walkthrough deliberately skips ChromaDB — Render's free tier doesn't include running a custom Docker image as a Private Service (that requires a paid plan), so we set `ENABLE_SEMANTIC_MEMORY=false` and the app runs on Postgres-based short-term memory alone (see `app/core/config.py`'s docstring on that setting). **Net result: this entire deployment needs no billing information anywhere in the stack** — relevant if you've had to remove a card and are waiting out a re-add restriction, as came up while building this walkthrough.
 
-**Prerequisites**: a [Render](https://render.com) account, this project pushed to a GitHub repo, and (for real production use, not just testing) an S3-compatible bucket — [Cloudflare R2](https://developers.cloudflare.com/r2/) has a genuinely free tier and is a reasonable default if you don't already use AWS.
+**One important clarification, since it's an easy mix-up**: ChromaDB and the S3-style storage below are unrelated systems. ChromaDB is semantic/long-term memory (skipped entirely here). The storage below is *only* for hosting generated voice-reply audio files so Twilio can fetch them — there is no way to "migrate ChromaDB to S3 storage," since ChromaDB doesn't work that way; we're simply not using ChromaDB at all in this deployment.
 
-#### 1. Push your code to GitHub
+#### Part 1: Backblaze B2 setup (free, no credit card)
+
+1. Sign up at [backblaze.com/sign-up/b2-cloud-storage-backup-archive](https://www.backblaze.com/sign-up/b2-cloud-storage-backup-archive) — confirmed on Backblaze's own signup page: no card required
+2. Verify your email, log in to the B2 dashboard
+3. **Create a Bucket** — name it something like `voice-ai-media` (must be globally unique), set **Files in Bucket** to **Public** (Twilio needs to fetch files without credentials)
+4. Click into the bucket, note the **Endpoint** shown (e.g. `s3.us-west-004.backblazeb2.com`) — you'll need this with `https://` in front
+5. Go to **App Keys** → **Add a New Application Key** → name it, restrict access to your specific bucket, type **Read and Write** → **Create New Key**
+6. **Copy both values immediately** (the application key is shown only once): `keyID` and `applicationKey`
+
+#### Part 2: Push your code to GitHub
 
 ```bash
 git init
@@ -641,79 +650,92 @@ git remote add origin https://github.com/yourusername/your-repo.git
 git push -u origin main
 ```
 
-#### 2. Deploy via the Blueprint
+#### Part 3: Create the Postgres database
 
-1. In the Render Dashboard, click **New → Blueprint**
-2. Connect your GitHub repo — Render will detect `render.yaml` automatically
-3. Click **Apply** — this creates the Postgres database and the web service (the web service's first deploy will fail health checks until you finish the steps below; that's expected)
+Render Dashboard → **New → PostgreSQL** → name it (e.g. `voice-ai-assistant-db`) → plan **Free** → create, and wait for it to finish provisioning. Keep its **Info** tab open — you'll need those connection details next.
 
-#### 3. Deploy ChromaDB as a Private Service
+#### Part 4: Create the web service
 
-Render Blueprints don't have a clean way to express "run this public Docker image as an internal-only service," so this one's manual:
+Render Dashboard → **New → Web Service** → connect your GitHub repo:
+- **Runtime**: Docker
+- **Dockerfile Path**: `docker/Dockerfile.prod`
+- **Docker Context**: `.`
+- **Plan**: Free
+- **Health Check Path**: `/health`
 
-1. **New → Private Service**
-2. **Image URL**: `chromadb/chroma:0.5.11`
-3. Name it (e.g. `chromadb`), leave the port at `8000`
-4. Deploy — note its **internal address** shown in the service details (something like `chromadb:8000` or a Render-internal hostname)
+Create — the first deploy will likely fail health checks until you finish the steps below. Expected; keep going.
 
-#### 4. Set the remaining environment variables
+#### Part 5: Set every environment variable
 
-On your web service → **Environment** tab, add:
+Web service → **Environment** tab:
+
 ```
-GROQ_API_KEY=your_real_key
-ELEVENLABS_API_KEY=your_real_key
-ELEVENLABS_VOICE_ID=your_chosen_voice_id
-TWILIO_ACCOUNT_SID=your_account_sid
-TWILIO_AUTH_TOKEN=your_auth_token
-TWILIO_WHATSAPP_NUMBER=whatsapp:+1XXXXXXXXXX
-CHROMA_HOST=<the internal hostname from step 3, no port>
-CHROMA_PORT=8000
+# Database — copy exact values from your Postgres's Info tab
+POSTGRES_USER=<from Postgres Info tab>
+POSTGRES_PASSWORD=<from Postgres Info tab>
+POSTGRES_HOST=<from Postgres Info tab — use the Internal host if shown>
+POSTGRES_PORT=<from Postgres Info tab>
+POSTGRES_DB=<from Postgres Info tab>
+
+# Skip ChromaDB entirely — no service to deploy, no cost
+ENABLE_SEMANTIC_MEMORY=false
+
+# Backblaze B2 — from Part 1
 MEDIA_STORAGE_BACKEND=s3
-S3_BUCKET_NAME=your_bucket_name
-S3_REGION=auto  (or your real AWS region)
-S3_ENDPOINT_URL=<your R2/provider endpoint, empty for real AWS S3>
-AWS_ACCESS_KEY_ID=your_key
-AWS_SECRET_ACCESS_KEY=your_secret
-DEBUG_API_TOKEN=<generate a random string — e.g. `openssl rand -hex 32`>
+S3_BUCKET_NAME=voice-ai-media
+S3_REGION=us-west-004
+S3_ENDPOINT_URL=https://s3.us-west-004.backblazeb2.com
+AWS_ACCESS_KEY_ID=<your keyID>
+AWS_SECRET_ACCESS_KEY=<your applicationKey>
+
+# Your API keys
+GROQ_API_KEY=<your real key>
+ELEVENLABS_API_KEY=<your real key>
+ELEVENLABS_VOICE_ID=<your chosen voice id>
+TWILIO_ACCOUNT_SID=<your account sid>
+TWILIO_AUTH_TOKEN=<your auth token>
+TWILIO_WHATSAPP_NUMBER=whatsapp:+1XXXXXXXXXX
+
+# Environment + security
+ENVIRONMENT=production
+DEBUG_API_TOKEN=<run `openssl rand -hex 32` locally and paste the result>
 ```
-Leave `PUBLIC_BASE_URL` unset for now — you don't know it until step 5.
 
-#### 5. Get your Render URL, then set `PUBLIC_BASE_URL`
+Save — triggers a redeploy.
 
-Render assigns a URL like `https://voice-ai-assistant-xyz.onrender.com` on first deploy. Copy it, then add:
+#### Part 6: Get your Render URL, then set `PUBLIC_BASE_URL`
+
+Once deployed, Render shows your URL at the top of the dashboard (e.g. `https://voice-ai-assistant-xyz.onrender.com`). Add it as one more variable:
 ```
 PUBLIC_BASE_URL=https://voice-ai-assistant-xyz.onrender.com
 ```
-and trigger a manual redeploy (Environment tab changes require one).
+Save (one more redeploy — last one needed).
 
-#### 6. Run migrations against the production database
+#### Part 7: Run migrations against the production database
 
-Render's **Shell** tab (on your web service) gives you a terminal inside the running container:
+Web service → **Shell** tab (a terminal inside the running container):
 ```bash
 alembic upgrade head
-```
-Confirm it worked:
-```bash
 alembic current
 ```
-Should show the revision ID matching `migrations/versions/a447c3190db3_initial_messages_table.py`.
+Should show revision `a447c3190db3`.
 
-#### 7. Point Twilio at your real deployment
+#### Part 8: Point Twilio at your real deployment
 
 This is also your moment to move beyond the Sandbox's 5-message/day limit, if you haven't already:
 
 - **Still testing** (Sandbox is fine): Twilio Console → **Messaging → Try it out → Send a WhatsApp message** → update the Sandbox's webhook URL to `https://your-render-url.onrender.com/webhook/whatsapp`
-- **Ready for real users**: apply for a proper WhatsApp Sender under **Messaging → Senders → WhatsApp senders** — this requires Meta Business verification (your own business/personal details, a few business days for approval) but removes the sandbox's join-code and daily-limit restrictions entirely. Once approved, configure that sender's webhook the same way.
+- **Ready for real users**: apply for a proper WhatsApp Sender under **Messaging → Senders → WhatsApp senders** — requires Meta Business verification (a few business days for approval) but removes the sandbox's join-code and daily-limit restrictions entirely.
 
-#### 8. Verify end to end
+#### Part 9: Verify end to end
 
 ```bash
 curl https://your-render-url.onrender.com/health
 curl https://your-render-url.onrender.com/metrics
 ```
-Then send a real voice note on WhatsApp and confirm you get Ava's voice reply back — same as Phase 9's local testing, just against your real deployment instead of ngrok.
+Then send a real voice note on WhatsApp and confirm you get Ava's voice reply back.
 
-#### 9. Confirm debug endpoints are actually locked down
+#### Part 10: Confirm debug endpoints are actually locked down
 
 ```bash
 curl -X POST https://your-render-url.onrender.com/tts/synthesize-test -d '{"text":"test"}'
@@ -722,6 +744,11 @@ curl -X POST https://your-render-url.onrender.com/tts/synthesize-test -d '{"text
 curl -X POST https://your-render-url.onrender.com/tts/synthesize-test \
   -H "X-Debug-Token: your_actual_debug_api_token" -d '{"text":"test"}'
 # Expect: past the guard (200, or a different error if ElevenLabs itself has an issue)
+```
+
+#### Faster next time: the Blueprint
+
+`render.yaml` in this repo does Parts 3-5's Postgres/web-service creation and most environment variable wiring in one step (**New → Blueprint**, connect your repo, click Apply) — worth using for a second deployment or a fresh environment, now that you understand what it's doing under the hood from doing it manually once.
 ```
 
 ### What's still a known limitation, honestly

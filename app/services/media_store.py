@@ -147,13 +147,7 @@ class S3MediaStorage:
         self._client = client or self._build_client()
 
     def _build_client(self):
-        try:
-            boto3 = __import__("boto3")
-        except ModuleNotFoundError as exc:
-            raise RuntimeError(
-                "boto3 is required for S3 media storage backend. "
-                "Install it or switch MEDIA_STORAGE_BACKEND to local."
-            ) from exc
+        import boto3
 
         kwargs: dict = {"region_name": settings.s3_region}
         if settings.aws_access_key_id:

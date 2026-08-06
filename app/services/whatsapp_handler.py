@@ -159,14 +159,15 @@ async def _generate_voice_reply(
         return agent_result.response_text, None
 
     logger.info(
-        "whatsapp | from=%s | transcript=%r | response_chars=%d | media_url=%s",
+        "whatsapp | from=%s | transcript=%r | response_chars=%d | note=%r | media_url=%s",
         from_number,
         transcription.full_text,
         len(agent_result.response_text),
+        agent_result.note,
         media_public_url,
     )
 
-    caption = _safe_caption(agent_result.response_text)
+    caption = agent_result.note or _safe_caption(agent_result.response_text)
     return caption, media_public_url
 
 

@@ -26,4 +26,10 @@ class AgentChatRequest(BaseModel):
 
 class AgentResult(BaseModel):
     response_text: str
+    note: str = Field(
+        default="",
+        description="Short caption summarizing response_text (Phase 6's "
+        "'Generate Ava's Note' step) — meant to accompany the spoken reply "
+        "as WhatsApp message text once Phase 9 wires up sending it.",
+    )
     history: list[ChatMessageModel]

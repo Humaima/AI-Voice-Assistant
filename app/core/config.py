@@ -83,6 +83,14 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # --- ChromaDB ---
+    # Semantic/long-term recall (Phase 5) is genuinely optional — the
+    # app works fine with just Postgres-based short-term memory if
+    # this is False. Useful for deployments where running a second
+    # Docker service (ChromaDB) isn't available or costs extra — e.g.
+    # Render's free tier covers Web Services + free Postgres, but a
+    # custom Docker image as a Private Service (what ChromaDB needs)
+    # requires a paid plan.
+    enable_semantic_memory: bool = True
     chroma_host: str = "localhost"
     chroma_port: int = 8000
     chroma_collection: str = "conversation_memory"

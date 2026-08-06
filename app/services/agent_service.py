@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 
 from app.agents.graph import build_graph
 from app.agents.state import AgentState
+from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.db.session import build_engine, build_sessionmaker
 from app.models.agent import AgentResult, ChatMessageModel
@@ -20,6 +21,7 @@ from app.services.memory.conversation_store import ConversationMemory, PostgresC
 from app.services.memory.vector_store import ChromaVectorStore, VectorMemory, build_chroma_client
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 _ROLE_TO_MESSAGE_CLASS = {
     "user": HumanMessage,
@@ -113,6 +115,7 @@ class AgentService:
 
         return AgentResult(
             response_text=result_state["response"],
+            note=result_state.get("note", ""),
             history=messages_to_models(result_state["messages"]),
         )
 
@@ -122,21 +125,28 @@ _agent_service_singleton: AgentService | None = None
 
 def get_agent_service() -> AgentService:
     """Lazy singleton — the real Groq-backed graph, Postgres engine,
-    and ChromaDB client are only constructed on first use, so importing
-    this module never requires GROQ_API_KEY or a reachable database to
-    be set up (Postgres/ChromaDB connection settings default to
-    localhost, see app/core/config.py). Real memory stores are wired in
-    by default here; pass explicit stores to AgentService directly if
-    you want Phase 4's no-persistence behavior instead (as most tests
-    in tests/test_agent.py do, via fakes)."""
+    and (if enabled) ChromaDB client are only constructed on first use,
+    so importing this module never requires GROQ_API_KEY or a reachable
+    database to be set up. Real memory stores are wired in by default
+    here; pass explicit stores to AgentService directly if you want
+    Phase 4's no-persistence behavior instead (as most tests in
+    tests/test_agent.py do, via fakes).
+
+    ChromaDB (semantic/long-term recall) is skipped entirely when
+    settings.enable_semantic_memory is False — the app runs fine on
+    Postgres-based short-term memory alone. See that setting's
+    docstring in app/core/config.py for why this matters (e.g. some
+    deployment platforms charge extra for a second Docker service)."""
     global _agent_service_singleton
     if _agent_service_singleton is None:
         engine = build_engine()
         sessionmaker = build_sessionmaker(engine)
         memory_store = PostgresConversationStore(sessionmaker)
 
-        chroma_client = build_chroma_client()
-        vector_store = ChromaVectorStore(chroma_client)
+        vector_store = None
+        if settings.enable_semantic_memory:
+            chroma_client = build_chroma_client()
+            vector_store = ChromaVectorStore(chroma_client)
 
         _agent_service_singleton = AgentService(memory_store=memory_store, vector_store=vector_store)
 

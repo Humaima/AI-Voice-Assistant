@@ -153,7 +153,7 @@ async def converse_test(
     return {
         "transcript": transcription.full_text,
         "response_text": agent_result.response_text,
-        "note": getattr(agent_result, "note", ""),
+        "note": agent_result.note,
     }
 
 
@@ -226,7 +226,7 @@ async def voice_reply_test(
     headers = {
         "X-Transcript-B64": base64.b64encode(transcription.full_text.encode("utf-8")).decode("ascii"),
         "X-Response-Text-B64": base64.b64encode(agent_result.response_text.encode("utf-8")).decode("ascii"),
-        "X-Note-B64": base64.b64encode(getattr(agent_result, "note", "").encode("utf-8")).decode("ascii"),
+        "X-Note-B64": base64.b64encode(agent_result.note.encode("utf-8")).decode("ascii"),
     }
     return StreamingResponse(io.BytesIO(reply_audio), media_type=media_type, headers=headers)
 
