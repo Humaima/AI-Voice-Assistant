@@ -1,0 +1,8 @@
+# Shell scripts must keep Unix (LF) line endings regardless of the
+# committing/checking-out platform's Git config — a shell script with
+# Windows (CRLF) line endings fails inside a Linux container with a
+# cryptic "no such file or directory" error that doesn't obviously
+# point at line endings as the cause. This matters concretely for
+# docker/entrypoint.sh, added in Phase 10 to run migrations
+# automatically on container startup.
+*.sh text eol=lf

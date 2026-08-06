@@ -39,6 +39,8 @@ COPY --from=builder /root/.local /home/appuser/.local
 COPY app ./app
 COPY migrations ./migrations
 COPY alembic.ini ./alembic.ini
+COPY docker/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 RUN chown -R appuser:appuser /app
 USER appuser
@@ -56,11 +58,16 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Single worker by default — this app's heavy lifting (Groq/ElevenLabs/
-# DB calls) is I/O-bound and handled via FastAPI's async event loop and
-# BackgroundTasks (Phase 10), not CPU parallelism, so extra workers
-# mainly help under genuinely high concurrent request volume. Override
-# via the WEB_CONCURRENCY env var on platforms that support it, or edit
-# this CMD directly (e.g. `--workers 4`) if you deploy somewhere with
-# multiple CPU cores and expect meaningful concurrent traffic.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Runs migrations, then starts uvicorn — see docker/entrypoint.sh for
+# why this replaced calling uvicorn directly (Render's Shell tab,
+# originally used to run `alembic upgrade head` manually, turned out
+# to require a paid plan; this makes migrations part of every
+# container startup instead, needing no platform-specific feature at
+# all). Single worker by default — this app's heavy lifting (Groq/
+# ElevenLabs/DB calls) is I/O-bound and handled via FastAPI's async
+# event loop and BackgroundTasks (Phase 10), not CPU parallelism, so
+# extra workers mainly help under genuinely high concurrent request
+# volume. Edit docker/entrypoint.sh directly (e.g. add `--workers 4`
+# to the uvicorn line) if you deploy somewhere with multiple CPU cores
+# and expect meaningful concurrent traffic.
+CMD ["./entrypoint.sh"]

@@ -711,14 +711,23 @@ PUBLIC_BASE_URL=https://voice-ai-assistant-xyz.onrender.com
 ```
 Save (one more redeploy — last one needed).
 
-#### Part 7: Run migrations against the production database
+#### Part 7: Migrations run automatically — just confirm they worked
 
-Web service → **Shell** tab (a terminal inside the running container):
-```bash
-alembic upgrade head
-alembic current
+Render's **Shell** tab (originally the plan for this step) turned out to require a paid plan — so migrations are now built to run automatically every time the container starts, via `docker/entrypoint.sh`. No manual command needed, and nothing here depends on any paid Render feature.
+
+**To confirm it actually worked**, check your deploy logs (web service → **Logs** tab) for these two lines near the start of the most recent deploy:
 ```
-Should show revision `a447c3190db3`.
+Running database migrations...
+Starting server...
+```
+If a migration failed, you'd see an Alembic error between those two lines and the deploy would fail its health check (since the container never gets to actually starting uvicorn) — a loud, visible failure rather than a silent one.
+
+**Alternative, if you ever want to run/test a migration without a full redeploy** (e.g. checking a new migration before merging it): run it from your own machine, pointed at Render's Postgres externally. On your Postgres's **Info** tab in Render, copy the **External Database URL**, then locally:
+```powershell
+$env:DATABASE_URL_OVERRIDE="<paste the External Database URL here>"
+alembic upgrade head
+```
+This also needs no paid Render feature — it's just your own machine connecting to Render's database the same way `psql` or any other external client would.
 
 #### Part 8: Point Twilio at your real deployment
 
