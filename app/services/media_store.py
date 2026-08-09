@@ -148,8 +148,21 @@ class S3MediaStorage:
 
     def _build_client(self):
         import boto3
+        from botocore.config import Config
 
-        kwargs: dict = {"region_name": settings.s3_region}
+        kwargs: dict = {
+            "region_name": settings.s3_region,
+            # Explicit SigV4 — Backblaze B2's own docs recommend this,
+            # since boto3 can fail to auto-detect the correct signing
+            # behavior when a custom endpoint_url is involved (as it
+            # always is for B2/R2/any non-AWS S3-compatible provider).
+            # A signature-version mismatch here is one known cause of
+            # B2's "Seed signature is invalid" error — the other common
+            # cause is S3_REGION not exactly matching the region
+            # actually encoded in your bucket's endpoint (e.g.
+            # "us-west-004" in s3.us-west-004.backblazeb2.com).
+            "config": Config(signature_version="s3v4"),
+        }
         if settings.aws_access_key_id:
             kwargs["aws_access_key_id"] = settings.aws_access_key_id
             kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
