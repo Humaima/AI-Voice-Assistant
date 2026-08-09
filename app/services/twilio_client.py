@@ -141,7 +141,15 @@ class TwilioMediaDownloader:
 
     async def download(self, media_url: str) -> bytes:
         auth = (settings.twilio_account_sid, settings.twilio_auth_token)
-        async with httpx.AsyncClient(timeout=30.0, transport=self._transport) as client:
+        # follow_redirects=True is required: Twilio's media API responds
+        # with a 307 redirect to the actual file location rather than
+        # serving content directly, and httpx does NOT follow redirects
+        # by default. Without this, every download failed with
+        # "Redirect response '307 Temporary Redirect'" — discovered via
+        # real end-to-end WhatsApp testing, not caught by the unit tests
+        # (which use httpx.MockTransport and never exercised a real
+        # multi-hop redirect chain).
+        async with httpx.AsyncClient(timeout=30.0, transport=self._transport, follow_redirects=True) as client:
             try:
                 response = await client.get(media_url, auth=auth)
                 response.raise_for_status()
